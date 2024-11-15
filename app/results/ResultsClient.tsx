@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Apple, MapPin } from "lucide-react";
 
 interface OptimizedRoute {
   totalDistance: string;
@@ -14,6 +15,7 @@ interface OptimizedRoute {
     type: string;
   }>;
   googleMapsUrl: string;
+  appleMapsUrl: string;
 }
 
 export default function ResultsClient() {
@@ -44,19 +46,35 @@ export default function ResultsClient() {
           <p>Total Distance: {optimizedRoute.totalDistance}</p>
           <p>Total Time: {optimizedRoute.totalTime}</p>
           <h2 className="text-xl font-semibold mt-4 mb-2">Waypoints:</h2>
-          <ul>
+          <ul className="space-y-2">
             {optimizedRoute.waypoints.map((waypoint, index) => (
-              <li key={index}>
-                {waypoint.order}. {waypoint.location} ({waypoint.type})
+              <li key={index} className="flex items-center">
+                <span className="inline-flex items-center justify-center w-6 h-6 mr-2 text-sm font-semibold text-white bg-primary rounded-full">
+                  {waypoint.order}
+                </span>
+                {waypoint.location} ({waypoint.type})
               </li>
             ))}
           </ul>
-          <Button
-            className="mt-4"
-            onClick={() => window.open(optimizedRoute.googleMapsUrl, "_blank")}
-          >
-            Open in Google Maps
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-4 mt-6">
+            <Button
+              className="flex items-center justify-center"
+              onClick={() =>
+                window.open(optimizedRoute.googleMapsUrl, "_blank")
+              }
+            >
+              <MapPin className="w-4 h-4 mr-2" />
+              Open in Google Maps
+            </Button>
+            <Button
+              className="flex items-center justify-center"
+              variant="outline"
+              onClick={() => window.open(optimizedRoute.appleMapsUrl, "_blank")}
+            >
+              <Apple className="w-4 h-4 mr-2" />
+              Open in Apple Maps
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

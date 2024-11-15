@@ -29,6 +29,13 @@ export async function POST(request: Request) {
       .join("/")}/${data.passengers
       .map((p: any) => encodeURIComponent(p.dropoff))
       .join("/")}`,
+    appleMapsUrl: `http://maps.apple.com/?saddr=${encodeURIComponent(
+      data.currentLocation
+    )}&daddr=${data.passengers
+      .map((p: any) => encodeURIComponent(p.pickup))
+      .join("+to:")}&daddr=${data.passengers
+      .map((p: any) => encodeURIComponent(p.dropoff))
+      .join("+to:")}`,
   };
 
   return NextResponse.json(mockOptimizedRoute);
