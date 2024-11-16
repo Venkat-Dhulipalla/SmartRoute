@@ -1,18 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { useLoadScript } from "@react-google-maps/api";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Trash2, Plus } from "lucide-react";
+import { AddressInput } from "@/components/AddressInput";
 
 interface Passenger {
   pickup: string;
@@ -24,71 +17,33 @@ interface FormData {
   currentLocation: string;
   passengers: Passenger[];
 }
-const libraries = ["places"];
+
+const libraries: ("places" | "geometry" | "drawing" | "visualization")[] = [
+  "places",
+];
+
 export default function RouteGeneratorForm() {
+  const { isLoaded, loadError } = useLoadScript({
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
+    libraries,
+  });
+
   const [formData, setFormData] = useState<FormData>({
     currentLocation: "",
     passengers: [{ pickup: "", dropoff: "", priority: 1 }],
   });
+
   const [errors, setErrors] = useState<Partial<FormData>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { isLoaded } = useLoadScript({
-    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
-    libraries: libraries as any,
-  });
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
 
-  const autocompleteRefs = useRef<{
-    [key: string]: google.maps.places.Autocomplete | null;
-  }>({});
-
-  useEffect(() => {
-    if (isLoaded) {
-      initializeAutocomplete("currentLocation");
-      formData.passengers.forEach((_, index) => {
-        initializeAutocomplete(`pickup-${index}`);
-        initializeAutocomplete(`dropoff-${index}`);
-      });
-    }
-  }, [isLoaded, formData.passengers.length]);
-
-  const initializeAutocomplete = (id: string) => {
-    if (!document.getElementById(id)) return;
-
-    const autocomplete = new google.maps.places.Autocomplete(
-      document.getElementById(id) as HTMLInputElement,
-      { types: ["geocode"] }
-    );
-    autocompleteRefs.current[id] = autocomplete;
-
-    autocomplete.addListener("place_changed", () => {
-      const place = autocomplete.getPlace();
-      if (place.formatted_address) {
-        if (id === "currentLocation") {
-          setFormData((prev) => ({
-            ...prev,
-            currentLocation: place.formatted_address!,
-          }));
-        } else {
-          const [type, index] = id.split("-");
-          setFormData((prev) => ({
-            ...prev,
-            passengers: prev.passengers.map((p, i) =>
-              i === parseInt(index)
-                ? { ...p, [type]: place.formatted_address! }
-                : p
-            ),
-          }));
-        }
-      }
-    });
-  };
-
-  const validateForm = () => {
     const newErrors: Partial<FormData> = {};
     if (!formData.currentLocation) {
       newErrors.currentLocation = "Current location is required";
     }
+
     formData.passengers.forEach((passenger, index) => {
       if (!passenger.pickup) {
         newErrors.passengers = newErrors.passengers || [];
@@ -101,64 +56,44 @@ export default function RouteGeneratorForm() {
         newErrors.passengers[index].dropoff = "Drop-off location is required";
       }
     });
+
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (validateForm()) {
+    if (Object.keys(newErrors).length > 0) {
+      return;
+    }
+
+    try {
       setIsSubmitting(true);
-      try {
-        const response = await fetch("/api/optimize-route", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(formData),
-        });
-        if (!response.ok) {
-          throw new Error("Failed to optimize route");
-        }
-        const result = await response.json();
-        window.location.href = `/results?routeData=${encodeURIComponent(
-          JSON.stringify(result)
-        )}`;
-      } catch (error) {
-        console.error("Error:", error);
-      } finally {
-        setIsSubmitting(false);
+
+      const response = await fetch("/api/optimize-route", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to optimize route");
       }
+
+      const result = await response.json();
+
+      window.location.href = `/results?routeData=${encodeURIComponent(
+        JSON.stringify(result)
+      )}`;
+    } catch (error) {
+      console.error("Error:", error);
+      setErrors({
+        currentLocation: "Failed to generate route. Please try again.",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement>,
-    index?: number
-  ) => {
-    const { name, value } = e.target;
-    if (index !== undefined) {
-      setFormData((prev) => ({
-        ...prev,
-        passengers: prev.passengers.map((p, i) =>
-          i === index ? { ...p, [name]: value } : p
-        ),
-      }));
-    } else {
-      setFormData((prev) => ({ ...prev, [name]: value }));
-    }
-  };
-
-  const handlePriorityChange = (value: string, index: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      passengers: prev.passengers.map((p, i) =>
-        i === index ? { ...p, priority: parseInt(value) } : p
-      ),
-    }));
-  };
-
-  const addPassenger = () => {
+  const handleAddPassenger = () => {
     setFormData((prev) => ({
       ...prev,
       passengers: [
@@ -168,152 +103,100 @@ export default function RouteGeneratorForm() {
     }));
   };
 
-  const removePassenger = (index: number) => {
+  const handleRemovePassenger = (index: number) => {
     setFormData((prev) => ({
       ...prev,
       passengers: prev.passengers.filter((_, i) => i !== index),
     }));
   };
 
+  const handleAddressChange =
+    (type: "currentLocation" | "pickup" | "dropoff", index?: number) =>
+    (value: string) => {
+      if (type === "currentLocation") {
+        setFormData((prev) => ({
+          ...prev,
+          currentLocation: value,
+        }));
+      } else {
+        setFormData((prev) => ({
+          ...prev,
+          passengers: prev.passengers.map((p, i) =>
+            i === index ? { ...p, [type]: value } : p
+          ),
+        }));
+      }
+    };
+
+  if (loadError) return <div>Error loading maps</div>;
   if (!isLoaded) return <div>Loading...</div>;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Route Generator</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div>
-              <label
-                htmlFor="currentLocation"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Current Location
-              </label>
-              <Input
-                id="currentLocation"
-                name="currentLocation"
-                type="text"
-                onChange={handleInputChange}
-                value={formData.currentLocation}
-                className={errors.currentLocation ? "border-red-500" : ""}
-              />
-              {errors.currentLocation && (
-                <p className="mt-1 text-sm text-red-500">
-                  {errors.currentLocation}
-                </p>
-              )}
-            </div>
+    <Card>
+      <CardContent className="p-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <AddressInput
+            id="currentLocation"
+            label="Current Location"
+            value={formData.currentLocation}
+            onChange={handleAddressChange("currentLocation")}
+            error={errors.currentLocation}
+            placeholder="Enter your starting point"
+          />
 
-            {formData.passengers.map((passenger, index) => (
-              <Card key={index} className="mb-4">
-                <CardContent className="pt-6">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div>
-                      <label
-                        htmlFor={`pickup-${index}`}
-                        className="block text-sm font-medium text-gray-700"
-                      >
-                        Pickup Location
-                      </label>
-                      <Input
-                        id={`pickup-${index}`}
-                        name="pickup"
-                        type="text"
-                        onChange={(e) => handleInputChange(e, index)}
-                        value={passenger.pickup}
-                        className={
-                          errors.passengers?.[index]?.pickup
-                            ? "border-red-500"
-                            : ""
-                        }
-                      />
-                      {errors.passengers?.[index]?.pickup && (
-                        <p className="mt-1 text-sm text-red-500">
-                          {errors.passengers[index].pickup}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <label
-                        htmlFor={`dropoff-${index}`}
-                        className="block text-sm font-medium text-gray-700"
-                      >
-                        Drop-off Location
-                      </label>
-                      <Input
-                        id={`dropoff-${index}`}
-                        name="dropoff"
-                        type="text"
-                        onChange={(e) => handleInputChange(e, index)}
-                        value={passenger.dropoff}
-                        className={
-                          errors.passengers?.[index]?.dropoff
-                            ? "border-red-500"
-                            : ""
-                        }
-                      />
-                      {errors.passengers?.[index]?.dropoff && (
-                        <p className="mt-1 text-sm text-red-500">
-                          {errors.passengers[index].dropoff}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-4">
-                    <label
-                      htmlFor={`priority-${index}`}
-                      className="block text-sm font-medium text-gray-700"
-                    >
-                      Priority
-                    </label>
-                    <Select
-                      onValueChange={(value) =>
-                        handlePriorityChange(value, index)
-                      }
-                      defaultValue={passenger.priority.toString()}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select priority" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[1, 2, 3, 4, 5, 6].map((priority) => (
-                          <SelectItem
-                            key={priority}
-                            value={priority.toString()}
-                          >
-                            {priority}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {index > 0 && (
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      className="mt-4"
-                      onClick={() => removePassenger(index)}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Remove Passenger
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-            <Button type="button" variant="outline" onClick={addPassenger}>
+          {formData.passengers.map((passenger, index) => (
+            <div key={index} className="space-y-4 p-4 border rounded-lg">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-medium">Passenger {index + 1}</h3>
+                {formData.passengers.length > 1 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleRemovePassenger(index)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+
+              <AddressInput
+                id={`pickup-${index}`}
+                label="Pickup Location"
+                value={passenger.pickup}
+                onChange={handleAddressChange("pickup", index)}
+                error={errors.passengers?.[index]?.pickup}
+                placeholder="Enter pickup address"
+              />
+
+              <AddressInput
+                id={`dropoff-${index}`}
+                label="Drop-off Location"
+                value={passenger.dropoff}
+                onChange={handleAddressChange("dropoff", index)}
+                error={errors.passengers?.[index]?.dropoff}
+                placeholder="Enter drop-off address"
+              />
+            </div>
+          ))}
+
+          <div className="flex justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleAddPassenger}
+              disabled={isSubmitting}
+            >
               <Plus className="mr-2 h-4 w-4" />
               Add Passenger
             </Button>
+
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Optimizing..." : "Generate Route"}
+            </Button>
           </div>
-        </CardContent>
-      </Card>
-      <Button type="submit" disabled={isSubmitting}>
-        {isSubmitting ? "Generating Route..." : "Generate Route"}
-      </Button>
-    </form>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
