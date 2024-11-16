@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useLoadScript } from "@react-google-maps/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,6 +25,8 @@ interface FormData {
   passengers: Passenger[];
 }
 
+const libraries = ["places"];
+
 export default function RouteGeneratorForm() {
   const [formData, setFormData] = useState<FormData>({
     currentLocation: "",
@@ -31,6 +34,57 @@ export default function RouteGeneratorForm() {
   });
   const [errors, setErrors] = useState<Partial<FormData>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { isLoaded } = useLoadScript({
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
+    libraries: libraries as any,
+  });
+
+  const autocompleteRefs = useRef<{
+    [key: string]: google.maps.places.Autocomplete | null;
+  }>({});
+
+  useEffect(() => {
+    if (isLoaded) {
+      initializeAutocomplete("currentLocation");
+      formData.passengers.forEach((_, index) => {
+        initializeAutocomplete(`pickup-${index}`);
+        initializeAutocomplete(`dropoff-${index}`);
+      });
+    }
+  }, [isLoaded, formData.passengers.length]);
+
+  const initializeAutocomplete = (id: string) => {
+    if (!document.getElementById(id)) return;
+
+    const autocomplete = new google.maps.places.Autocomplete(
+      document.getElementById(id) as HTMLInputElement,
+      { types: ["geocode"] }
+    );
+    autocompleteRefs.current[id] = autocomplete;
+
+    autocomplete.addListener("place_changed", () => {
+      const place = autocomplete.getPlace();
+      if (place.formatted_address) {
+        if (id === "currentLocation") {
+          setFormData((prev) => ({
+            ...prev,
+            currentLocation: place.formatted_address!,
+          }));
+        } else {
+          const [type, index] = id.split("-");
+          setFormData((prev) => ({
+            ...prev,
+            passengers: prev.passengers.map((p, i) =>
+              i === parseInt(index)
+                ? { ...p, [type]: place.formatted_address! }
+                : p
+            ),
+          }));
+        }
+      }
+    });
+  };
 
   const validateForm = () => {
     const newErrors: Partial<FormData> = {};
@@ -123,6 +177,8 @@ export default function RouteGeneratorForm() {
     }));
   };
 
+  if (!isLoaded) return <div>Loading...</div>;
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <Card>
@@ -142,8 +198,8 @@ export default function RouteGeneratorForm() {
                 id="currentLocation"
                 name="currentLocation"
                 type="text"
-                value={formData.currentLocation}
                 onChange={handleInputChange}
+                value={formData.currentLocation}
                 className={errors.currentLocation ? "border-red-500" : ""}
               />
               {errors.currentLocation && (
@@ -168,8 +224,8 @@ export default function RouteGeneratorForm() {
                         id={`pickup-${index}`}
                         name="pickup"
                         type="text"
-                        value={passenger.pickup}
                         onChange={(e) => handleInputChange(e, index)}
+                        value={passenger.pickup}
                         className={
                           errors.passengers?.[index]?.pickup
                             ? "border-red-500"
@@ -193,8 +249,8 @@ export default function RouteGeneratorForm() {
                         id={`dropoff-${index}`}
                         name="dropoff"
                         type="text"
-                        value={passenger.dropoff}
                         onChange={(e) => handleInputChange(e, index)}
+                        value={passenger.dropoff}
                         className={
                           errors.passengers?.[index]?.dropoff
                             ? "border-red-500"
