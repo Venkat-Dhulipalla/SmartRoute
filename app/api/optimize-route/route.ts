@@ -1,42 +1,29 @@
 import { NextResponse } from "next/server";
+import { optimizeRoute } from "@/lib/services/routeOptimizer";
 
 export async function POST(request: Request) {
-  const data = await request.json();
+  try {
+    if (!process.env.GOOGLE_MAPS_API_KEY) {
+      throw new Error("Google Maps API key is not configured");
+    }
 
-  // Here you would typically call the Google Maps API to optimize the route
-  // For this example, we'll just return a mock response
+    const data = await request.json();
 
-  const mockOptimizedRoute = {
-    totalDistance: "50 km",
-    totalTime: "1 hour 30 minutes",
-    waypoints: data.passengers
-      .map((passenger: any, index: number) => ({
-        order: index + 1,
-        location: passenger.pickup,
-        type: "pickup",
-      }))
-      .concat(
-        data.passengers.map((passenger: any, index: number) => ({
-          order: data.passengers.length + index + 1,
-          location: passenger.dropoff,
-          type: "dropoff",
-        }))
-      ),
-    googleMapsUrl: `https://www.google.com/maps/dir/${encodeURIComponent(
-      data.currentLocation
-    )}/${data.passengers
-      .map((p: any) => encodeURIComponent(p.pickup))
-      .join("/")}/${data.passengers
-      .map((p: any) => encodeURIComponent(p.dropoff))
-      .join("/")}`,
-    appleMapsUrl: `http://maps.apple.com/?saddr=${encodeURIComponent(
-      data.currentLocation
-    )}&daddr=${data.passengers
-      .map((p: any) => encodeURIComponent(p.pickup))
-      .join("+to:")}&daddr=${data.passengers
-      .map((p: any) => encodeURIComponent(p.dropoff))
-      .join("+to:")}`,
-  };
+    if (!data.currentLocation || !data.passengers || !data.passengers.length) {
+      return NextResponse.json(
+        { error: "Invalid request data" },
+        { status: 400 }
+      );
+    }
 
-  return NextResponse.json(mockOptimizedRoute);
+    const optimizedRoute = await optimizeRoute(data);
+    return NextResponse.json(optimizedRoute);
+  } catch (error) {
+    console.error("API route error:", error);
+
+    const errorMessage =
+      error instanceof Error ? error.message : "Failed to optimize route";
+
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
+  }
 }

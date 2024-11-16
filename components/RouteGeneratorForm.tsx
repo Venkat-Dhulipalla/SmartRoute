@@ -24,9 +24,7 @@ interface FormData {
   currentLocation: string;
   passengers: Passenger[];
 }
-
 const libraries = ["places"];
-
 export default function RouteGeneratorForm() {
   const [formData, setFormData] = useState<FormData>({
     currentLocation: "",
